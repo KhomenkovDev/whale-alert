@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}KhomDev Whale Alert | Real-Time On-Chain Intel{% endblock %}</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'css/dashboard.css' %}">
+
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    <nav class="navbar">
+        <div class="container">
+            <div class="nav-brand">
+                <i class="fa-solid fa-water brand-icon"></i>
+                <span class="brand-text">KHOMDEV <span style="-webkit-text-fill-color: var(--accent)">WHALE</span></span>
+            </div>
+            <div class="nav-status">
+                <span id="connection-status" class="status-badge disconnected">
+                    <span class="status-dot"></span>
+                    <span class="status-text">Disconnected</span>
+                </span>
+            </div>
+        </div>
+    </nav>
+
+    <main class="main-content">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="footer">
+        <div class="container text-center">
+            <p>&copy; 2026 KhomDev Intelligence Hub &bull; Powered by Web3.py, Django Channels &amp; Claude AI</p>
+        </div>
+    </footer>
+
+    <script>
+        const protocol = window.location.protocol === "https:" ? "wss://" : "ws://";
+        const WHALE_WS_URL = protocol + window.location.host + "/ws/whales/";
+    </script>
+    <script src="{% static 'js/dashboard.js' %}"></script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

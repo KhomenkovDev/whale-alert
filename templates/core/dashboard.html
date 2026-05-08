@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}KhomDev Intelligence | Live Multi-Chain Whale Monitoring{% endblock %}
+
+{% block content %}
+<div class="container">
+
+    <!-- Hero -->
+    <header class="hero-section">
+        <h1 class="hero-title">On-Chain Whale <span class="text-accent">Intelligence</span></h1>
+        <p class="hero-subtitle">
+            Real-time monitoring of large-scale token movements across Ethereum, BNB Chain, Polygon &amp; Avalanche.
+            Every transfer above <span class="text-gold">${{ threshold|default:"1,000,000" }}</span> triggers a live alert &amp; AI-powered analysis.
+        </p>
+    </header>
+
+    <!-- Stats -->
+    <div class="stats-grid">
+        <div class="stat-card" title="Total whale transactions detected across all chains.">
+            <i class="fa-solid fa-water stat-icon"></i>
+            <span class="stat-label">Total Whale Movements</span>
+            <div id="stat-total-whales" class="stat-value">{{ stats.total_whales|default:"0" }}</div>
+        </div>
+        <div class="stat-card" title="Combined USD value of all tracked whale transfers.">
+            <i class="fa-solid fa-chart-line stat-icon"></i>
+            <span class="stat-label">Aggregated Volume</span>
+            <div id="stat-total-volume" class="stat-value">${{ stats.total_volume|floatformat:0|default:"0" }}</div>
+        </div>
+        <div class="stat-card" title="Mean value per whale transaction.">
+            <i class="fa-solid fa-scale-balanced stat-icon"></i>
+            <span class="stat-label">Avg. Transaction Size</span>
+            <div id="stat-avg-size" class="stat-value">${{ stats.avg_size|floatformat:0|default:"0" }}</div>
+        </div>
+    </div>
+
+    <!-- Chain Selector -->
+    <div class="chain-selector">
+        <span class="chain-selector-label">Network:</span>
+        <button class="chain-btn active-all" data-chain="ALL">
+            <span class="chain-dot" style="background:var(--accent)"></span>
+            All Chains
+        </button>
+        <button class="chain-btn" data-chain="ETH">
+            <span class="chain-dot" style="background:var(--chain-eth)"></span>
+            ⟠ Ethereum
+        </button>
+        <button class="chain-btn" data-chain="BNB">
+            <span class="chain-dot" style="background:var(--chain-bnb)"></span>
+            ◈ BNB Chain
+        </button>
+        <button class="chain-btn" data-chain="POL">
+            <span class="chain-dot" style="background:var(--chain-pol)"></span>
+            ⬡ Polygon
+        </button>
+        <button class="chain-btn" data-chain="AVAX">
+            <span class="chain-dot" style="background:var(--chain-avax)"></span>
+            △ Avalanche
+        </button>
+    </div>
+
+    <!-- Dashboard Split: Feed + Report Panel -->
+    <div class="dashboard-split">
+
+        <!-- Live Feed -->
+        <div>
+            <div class="feed-header">
+                <div class="feed-title-group">
+                    <h2 class="feed-title">
+                        <i class="fa-solid fa-satellite-dish text-accent"></i>
+                        Live Intelligence Feed
+                    </h2>
+                    <p class="feed-description">Click any transaction to generate an AI whale report</p>
+                </div>
+                <span class="badge-pulsing">
+                    <span class="pulse-dot"></span>
+                    <span id="live-chain-badge">Live Network: All Chains</span>
+                </span>
+            </div>
+
+            <div class="alert-feed">
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Chain</th>
+                                <th>Value (USD)</th>
+                                <th>Transaction Hash</th>
+                                <th class="hide-mobile">From</th>
+                                <th class="hide-mobile">To</th>
+                                <th>Time (UTC)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="whale-table-body">
+                            <tr>
+                                <td colspan="6" class="empty-state">
+                                    <div class="loading-wrapper">
+                                        <i class="fa-solid fa-spinner fa-spin empty-icon"></i>
+                                        <p>Connecting to multi-chain intelligence feed…</p>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- AI Report Panel -->
+        <aside class="report-panel">
+            <div class="report-panel-header">
+                <span class="report-panel-title">
+                    <i class="fa-solid fa-robot"></i>
+                    AI Whale Report
+                </span>
+                <span style="font-size:0.6875rem;color:var(--text-secondary)">Claude AI</span>
+            </div>
+            <div id="report-panel-body" class="report-panel-body">
+                <!-- Populated by JS -->
+            </div>
+        </aside>
+
+    </div>
+
+    <!-- How it works -->
+    <section class="info-section">
+        <div class="info-grid">
+            <div class="info-box">
+                <div class="info-icon"><i class="fa-solid fa-microchip"></i></div>
+                <h3>Multi-Chain Scanning</h3>
+                <p>Our engine scans every new block across Ethereum, BNB Chain, Polygon and Avalanche — filtering ERC-20 Transfer events above the whale threshold using Web3.py.</p>
+            </div>
+            <div class="info-box">
+                <div class="info-icon"><i class="fa-solid fa-brain"></i></div>
+                <h3>AI-Powered Reports</h3>
+                <p>Every whale transaction is analyzed by Claude AI. Click any row to get an instant intelligence report: intent, market impact, risk level, and key signals.</p>
+            </div>
+            <div class="info-box">
+                <div class="info-icon"><i class="fa-solid fa-bolt"></i></div>
+                <h3>Real-Time WebSocket Feed</h3>
+                <p>Django Channels pushes new whale detections to your browser within seconds of block confirmation — no polling, no delay.</p>
+            </div>
+        </div>
+    </section>
+
+</div>
+{% endblock %}
