@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}KhomDev Whale Alert | Real-Time On-Chain Intel{% endblock %}</title>
+    <title>{% block title %}Whale Alert{% endblock %}</title>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -21,9 +21,12 @@
         <div class="container">
             <div class="nav-brand">
                 <i class="fa-solid fa-water brand-icon"></i>
-                <span class="brand-text">KHOMDEV <span style="-webkit-text-fill-color: var(--accent)">WHALE</span></span>
+                <span class="brand-text">WHALE <span style="-webkit-text-fill-color: var(--accent)">ALERT</span></span>
             </div>
-            <div class="nav-status">
+            <div class="nav-actions">
+                <button id="theme-toggle" class="theme-btn" aria-label="Toggle theme">
+                    <i class="fa-solid fa-moon"></i>
+                </button>
                 <span id="connection-status" class="status-badge disconnected">
                     <span class="status-dot"></span>
                     <span class="status-text">Disconnected</span>
@@ -38,15 +41,17 @@
 
     <footer class="footer">
         <div class="container text-center">
-            <p>&copy; 2026 KhomDev Intelligence Hub &bull; Powered by Web3.py, Django Channels &amp; Claude AI</p>
+            <p>&copy; 2026 Whale Alert &bull; Web3.py, Django Channels &amp; Claude AI</p>
         </div>
     </footer>
+
+    <div id="toast-container"></div>
 
     <script>
         const protocol = window.location.protocol === "https:" ? "wss://" : "ws://";
         const WHALE_WS_URL = protocol + window.location.host + "/ws/whales/";
     </script>
-    <script src="{% static 'js/dashboard.js' %}"></script>
+    <script type="module" src="{% static 'js/modules/main.js' %}"></script>
     {% block extra_js %}{% endblock %}
 </body>
 </html>

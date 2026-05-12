@@ -1,29 +1,24 @@
-"""
-Celery tasks for monitoring multiple blockchains for whale transactions.
-
-Supports: Ethereum, BNB Chain, Polygon, Avalanche (EVM-compatible chains).
-Each chain scans ERC-20 Transfer events for the configured stablecoins/tokens,
-filters by USD threshold, persists to DB, and broadcasts via Django Channels.
-"""
+from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 from decimal import Decimal
-from datetime import datetime, timezone
+from typing import Any
 
+from asgiref.sync import async_to_sync
 from celery import shared_task
+from channels.layers import get_channel_layer
 from django.conf import settings
 from django.utils import timezone as django_tz
-from asgiref.sync import async_to_sync
-from channels.layers import get_channel_layer
 
 logger = logging.getLogger(__name__)
 
-ERC20_ABI = [
+ERC20_ABI: list[dict[str, Any]] = [
     {
         "anonymous": False,
         "inputs": [
-            {"indexed": True,  "name": "from",  "type": "address"},
-            {"indexed": True,  "name": "to",    "type": "address"},
+            {"indexed": True, "name": "from", "type": "address"},
+            {"indexed": True, "name": "to", "type": "address"},
             {"indexed": False, "name": "value", "type": "uint256"},
         ],
         "name": "Transfer",
@@ -31,104 +26,134 @@ ERC20_ABI = [
     }
 ]
 
-# Chain configs: rpc_url_setting, explorer, tokens {symbol: (contract, decimals)}
-CHAIN_CONFIGS = {
-    'ETH': {
-        'rpc_setting': 'ETHEREUM_RPC_URL',
-        'explorer': 'https://etherscan.io/tx/',
-        'name': 'Ethereum',
-        'tokens': {
-            'USDC': ('0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', 6),
-            'USDT': ('0xdAC17F958D2ee523a2206206994597C13D831ec7', 6),
-            'DAI':  ('0x6B175474E89094C44Da98b954EedeAC495271d0F', 18),
+CHAIN_CONFIGS: dict[str, dict[str, Any]] = {
+    "ETH": {
+        "rpc_setting": "ETHEREUM_RPC_URL",
+        "explorer": "https://etherscan.io/tx/",
+        "name": "Ethereum",
+        "tokens": {
+            "USDC": ("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", 6),
+            "USDT": ("0xdAC17F958D2ee523a2206206994597C13D831ec7", 6),
+            "DAI": ("0x6B175474E89094C44Da98b954EedeAC495271d0F", 18),
         },
     },
-    'BNB': {
-        'rpc_setting': 'BNB_RPC_URL',
-        'explorer': 'https://bscscan.com/tx/',
-        'name': 'BNB Chain',
-        'tokens': {
-            'USDT': ('0x55d398326f99059fF775485246999027B3197955', 18),
-            'USDC': ('0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d', 18),
-            'BUSD': ('0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56', 18),
+    "BNB": {
+        "rpc_setting": "BNB_RPC_URL",
+        "explorer": "https://bscscan.com/tx/",
+        "name": "BNB Chain",
+        "tokens": {
+            "USDT": ("0x55d398326f99059fF775485246999027B3197955", 18),
+            "USDC": ("0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", 18),
+            "BUSD": ("0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56", 18),
         },
     },
-    'POL': {
-        'rpc_setting': 'POLYGON_RPC_URL',
-        'explorer': 'https://polygonscan.com/tx/',
-        'name': 'Polygon',
-        'tokens': {
-            'USDC': ('0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174', 6),
-            'USDT': ('0xc2132D05D31c914a87C6611C10748AEb04B58e8F', 6),
+    "POL": {
+        "rpc_setting": "POLYGON_RPC_URL",
+        "explorer": "https://polygonscan.com/tx/",
+        "name": "Polygon",
+        "tokens": {
+            "USDC": ("0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174", 6),
+            "USDT": ("0xc2132D05D31c914a87C6611C10748AEb04B58e8F", 6),
         },
     },
-    'AVAX': {
-        'rpc_setting': 'AVALANCHE_RPC_URL',
-        'explorer': 'https://snowtrace.io/tx/',
-        'name': 'Avalanche',
-        'tokens': {
-            'USDC': ('0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E', 6),
-            'USDT': ('0x9702230A8Ea53601f5cD2dc00fDBc13d4dF4A8c7', 6),
+    "AVAX": {
+        "rpc_setting": "AVALANCHE_RPC_URL",
+        "explorer": "https://snowtrace.io/tx/",
+        "name": "Avalanche",
+        "tokens": {
+            "USDC": ("0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E", 6),
+            "USDT": ("0x9702230A8Ea53601f5cD2dc00fDBc13d4dF4A8c7", 6),
         },
     },
 }
 
 
-def _get_web3(rpc_url: str):
+def _get_web3(rpc_url: str) -> Any:
     from web3 import Web3
-    if rpc_url.startswith('wss://') or rpc_url.startswith('ws://'):
-        provider = Web3.WebsocketProvider(rpc_url)
-    else:
-        provider = Web3.HTTPProvider(rpc_url)
-    return Web3(provider)
+
+    if rpc_url.startswith("wss://") or rpc_url.startswith("ws://"):
+        return Web3(Web3.WebsocketProvider(rpc_url))
+    return Web3(Web3.HTTPProvider(rpc_url))
 
 
-def _broadcast_whale(tx_dict: dict):
+def _broadcast_whale(tx_dict: dict[str, Any]) -> None:
     channel_layer = get_channel_layer()
     async_to_sync(channel_layer.group_send)(
-        'whale_alerts',
-        {'type': 'whale_alert', 'transaction': tx_dict}
+        "whale_alerts",
+        {"type": "whale_alert", "transaction": tx_dict},
+    )
+
+
+def _get_scan_range(chain: str, w3: Any, lookback: int = 10) -> tuple[int, int, bool]:
+    from core.models import ChainScanState
+
+    latest = w3.eth.block_number
+    state, _ = ChainScanState.objects.get_or_create(chain=chain)
+    if state.last_scanned_block and state.last_scanned_block < latest and not state.is_scanning:
+        from_block = state.last_scanned_block + 1
+        resumed = True
+    else:
+        from_block = max(0, latest - lookback)
+        resumed = False
+    to_block = latest
+    return from_block, to_block, resumed
+
+
+def _update_scan_state(chain: str, to_block: int) -> None:
+    from core.models import ChainScanState
+
+    ChainScanState.objects.update_or_create(
+        chain=chain,
+        defaults={"last_scanned_block": to_block, "is_scanning": False},
     )
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=10)
-def scan_chain_transfers(self, chain: str = 'ETH', from_block: int = None, to_block: int = None):
-    """
-    Scan recent token Transfer events on the given chain for whale-sized moves.
-
-    Args:
-        chain:      Chain key — 'ETH', 'BNB', 'POL', 'AVAX'
-        from_block: Start block (default: latest - 10)
-        to_block:   End block (default: 'latest')
-    """
-    from core.models import WhaleTransaction
+def scan_chain_transfers(
+    self: Any,
+    chain: str = "ETH",
+    from_block: int | None = None,
+    to_block: int | None = None,
+) -> dict[str, Any]:
+    from core.models import STABLECOINS, ChainScanState, WhaleTransaction
 
     if chain not in CHAIN_CONFIGS:
         logger.warning("Unknown chain: %s", chain)
-        return {'status': 'unknown_chain'}
+        return {"status": "unknown_chain"}
 
     config = CHAIN_CONFIGS[chain]
-    rpc_url = getattr(settings, config['rpc_setting'], None)
+    rpc_url: str | None = getattr(settings, str(config["rpc_setting"]), None)
     if not rpc_url:
         logger.warning("No RPC URL configured for %s", chain)
-        return {'status': 'no_rpc'}
+        return {"status": "no_rpc"}
 
     try:
         w3 = _get_web3(rpc_url)
         if not w3.is_connected():
             logger.warning("Web3 not connected for %s. Skipping.", chain)
-            return {'status': 'disconnected'}
+            return {"status": "disconnected"}
 
-        latest = w3.eth.block_number
-        if from_block is None:
-            from_block = max(0, latest - 10)
-        if to_block is None:
-            to_block = latest
+        if from_block is None or to_block is None:
+            fb, tb, resumed = _get_scan_range(chain, w3)
+            if from_block is None:
+                from_block = fb
+            if to_block is None:
+                to_block = tb
+
+        if from_block >= to_block and not (from_block is None and to_block is None):
+            logger.debug("No new blocks to scan for %s (at block %s)", chain, to_block)
+            return {"status": "ok", "chain": chain, "blocks": 0, "new_whales": 0}
+
+        ChainScanState.objects.filter(chain=chain).update(is_scanning=True)
 
         threshold = Decimal(str(settings.WHALE_THRESHOLD_USD))
         new_whales = 0
 
-        for symbol, (contract_addr, decimals) in config['tokens'].items():
+        for symbol, (contract_addr, decimals) in config["tokens"].items():
+            if symbol not in STABLECOINS:
+                logger.info("Skipping non-stablecoin %s on %s", symbol, chain)
+                continue
+
             try:
                 address = w3.to_checksum_address(contract_addr)
                 contract = w3.eth.contract(address=address, abi=ERC20_ABI)
@@ -141,35 +166,35 @@ def scan_chain_transfers(self, chain: str = 'ETH', from_block: int = None, to_bl
                 continue
 
             for event in events:
-                raw_value = event['args']['value']
-                usd_amount = Decimal(raw_value) / Decimal(10 ** decimals)
+                raw_value = event["args"]["value"]
+                usd_amount = Decimal(raw_value) / Decimal(10**decimals)
 
                 if usd_amount < threshold:
                     continue
 
-                tx_hash = event['transactionHash'].hex()
-                block_num = event['blockNumber']
+                tx_hash = event["transactionHash"].hex()
+                block_num = event["blockNumber"]
 
                 if WhaleTransaction.objects.filter(tx_hash=tx_hash).exists():
                     continue
 
                 block_info = w3.eth.get_block(block_num)
-                timestamp = datetime.fromtimestamp(block_info['timestamp'], tz=timezone.utc)
+                timestamp = datetime.fromtimestamp(block_info["timestamp"], tz=UTC)
 
                 whale_tx = WhaleTransaction.objects.create(
                     tx_hash=tx_hash,
                     block_number=block_num,
-                    from_address=event['args']['from'],
-                    to_address=event['args']['to'],
+                    from_address=event["args"]["from"],
+                    to_address=event["args"]["to"],
                     token_symbol=symbol,
                     token_amount=usd_amount,
                     usd_value=usd_amount,
                     timestamp=timestamp,
                     chain=chain,
-                    explorer_url=config['explorer'] + tx_hash,
+                    explorer_url=config["explorer"] + tx_hash,
                 )
 
-                logger.info("🐋 %s | %s $%.2f — tx %s", chain, symbol, float(usd_amount), tx_hash[:12])
+                logger.info("%s | %s $%.2f — tx %s", chain, symbol, float(usd_amount), tx_hash[:12])
 
                 try:
                     _broadcast_whale(whale_tx.to_dict())
@@ -178,50 +203,99 @@ def scan_chain_transfers(self, chain: str = 'ETH', from_block: int = None, to_bl
 
                 new_whales += 1
 
-        return {'status': 'ok', 'chain': chain, 'blocks': to_block - from_block + 1, 'new_whales': new_whales}
+        _update_scan_state(chain, to_block)
+
+        return {
+            "status": "ok",
+            "chain": chain,
+            "blocks": to_block - from_block + 1,
+            "new_whales": new_whales,
+        }
 
     except Exception as exc:
+        ChainScanState.objects.filter(chain=chain).update(is_scanning=False)
         logger.error("scan_chain_transfers failed for %s: %s", chain, exc, exc_info=True)
-        raise self.retry(exc=exc)
+        raise self.retry(exc=exc) from exc
 
 
 @shared_task
-def scan_all_chains():
-    """Fan-out task: triggers a scan on every configured chain in parallel."""
+def scan_all_chains() -> dict[str, Any]:
     for chain in CHAIN_CONFIGS:
         scan_chain_transfers.delay(chain)
-    return {'triggered': list(CHAIN_CONFIGS.keys())}
+    return {"triggered": list(CHAIN_CONFIGS.keys())}
 
 
-# Backward-compatible alias
 @shared_task(bind=True, max_retries=3, default_retry_delay=10)
-def scan_usdc_transfers(self, from_block: int = None, to_block: int = None):
-    """Legacy task — scans Ethereum USDC only. Use scan_chain_transfers instead."""
-    return scan_chain_transfers.apply(args=['ETH', from_block, to_block]).get()
+def scan_usdc_transfers(
+    self: Any, from_block: int | None = None, to_block: int | None = None
+) -> dict[str, Any]:
+    return scan_chain_transfers.apply(args=["ETH", from_block, to_block]).get()
 
 
 @shared_task
-def seed_demo_transactions():
-    """Inject realistic multi-chain demo whale transactions for development."""
+def seed_demo_transactions() -> dict[str, Any]:
     import random
+
     from core.models import WhaleTransaction
 
-    demo_data = [
-        ('ETH', 'USDC', '0xBE0eB53F46cd790Cd13851d5EFf43D12404d33E8', '0x40B38765696e3d5d8d9d834D8AaD4bB6e418E489', 34_726_445),
-        ('ETH', 'USDT', '0x28C6c06298d514Db089934071355E5743bf21d60', '0x21a31Ee1afC51d94C2eFcCAa2092aD1028285549', 12_500_000),
-        ('BNB', 'USDT', '0xF977814e90dA44bFA03b6295A0616a897441aceC', '0x8894E0a0c962CB723c1976a4421c95949bE2D4E5', 8_200_000),
-        ('BNB', 'BUSD', '0xDFd5293D8e347dFe59E90eFd55b2956a1343963d', '0x1111111254EEB25477B68fb85Ed929f73A960582', 5_100_000),
-        ('POL', 'USDC', '0xBE0eB53F46cd790Cd13851d5EFf43D12404d33E8', '0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD', 3_800_000),
-        ('AVAX', 'USDC', '0xAbcDef1234567890AbcDef1234567890AbcDef12', '0x9876543210FeDcBa9876543210FeDcBa98765432', 7_450_000),
-        ('ETH', 'DAI',  '0x1234567890123456789012345678901234567890', '0x0987654321098765432109876543210987654321', 22_000_000),
+    demo_data: list[tuple[str, str, str, str, int]] = [
+        (
+            "ETH",
+            "USDC",
+            "0xBE0eB53F46cd790Cd13851d5EFf43D12404d33E8",
+            "0x40B38765696e3d5d8d9d834D8AaD4bB6e418E489",
+            34_726_445,
+        ),
+        (
+            "ETH",
+            "USDT",
+            "0x28C6c06298d514Db089934071355E5743bf21d60",
+            "0x21a31Ee1afC51d94C2eFcCAa2092aD1028285549",
+            12_500_000,
+        ),
+        (
+            "BNB",
+            "USDT",
+            "0xF977814e90dA44bFA03b6295A0616a897441aceC",
+            "0x8894E0a0c962CB723c1976a4421c95949bE2D4E5",
+            8_200_000,
+        ),
+        (
+            "BNB",
+            "BUSD",
+            "0xDFd5293D8e347dFe59E90eFd55b2956a1343963d",
+            "0x1111111254EEB25477B68fb85Ed929f73A960582",
+            5_100_000,
+        ),
+        (
+            "POL",
+            "USDC",
+            "0xBE0eB53F46cd790Cd13851d5EFf43D12404d33E8",
+            "0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD",
+            3_800_000,
+        ),
+        (
+            "AVAX",
+            "USDC",
+            "0xAbcDef1234567890AbcDef1234567890AbcDef12",
+            "0x9876543210FeDcBa9876543210FeDcBa98765432",
+            7_450_000,
+        ),
+        (
+            "ETH",
+            "DAI",
+            "0x1234567890123456789012345678901234567890",
+            "0x0987654321098765432109876543210987654321",
+            22_000_000,
+        ),
     ]
 
-    explorer_map = {c: CHAIN_CONFIGS[c]['explorer'] for c in CHAIN_CONFIGS}
+    explorer_map = {c: CHAIN_CONFIGS[c]["explorer"] for c in CHAIN_CONFIGS}
     now = django_tz.now()
     created = 0
 
     for i, (chain, symbol, from_addr, to_addr, base_val) in enumerate(demo_data):
-        fake_hash = '0x' + ''.join(random.choices('0123456789abcdef', k=64))
+        fake_hash = "0x" + "".join(random.choices("0123456789abcdef", k=64))
         usd_val = Decimal(str(round(base_val * random.uniform(0.9, 1.1), 2)))
         ts = now - django_tz.timedelta(minutes=i * 5)
 
@@ -236,16 +310,16 @@ def seed_demo_transactions():
                 usd_value=usd_val,
                 timestamp=ts,
                 chain=chain,
-                explorer_url=explorer_map.get(chain, 'https://etherscan.io/tx/') + fake_hash,
+                explorer_url=explorer_map.get(chain, "https://etherscan.io/tx/") + fake_hash,
             ),
         )
 
         if was_created:
-            try:
+            from contextlib import suppress
+
+            with suppress(Exception):
                 _broadcast_whale(whale.to_dict())
-            except Exception:
-                pass
             created += 1
 
     logger.info("Seeded %d multi-chain demo whale transactions.", created)
-    return {'seeded': created}
+    return {"seeded": created}

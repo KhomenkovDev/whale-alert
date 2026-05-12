@@ -1,14 +1,14 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block title %}KhomDev Intelligence | Live Multi-Chain Whale Monitoring{% endblock %}
+{% block title %}Whale Alert | Live Multi-Chain Whale Monitoring{% endblock %}
 
 {% block content %}
 <div class="container">
 
     <!-- Hero -->
     <header class="hero-section">
-        <h1 class="hero-title">On-Chain Whale <span class="text-accent">Intelligence</span></h1>
+        <h1 class="hero-title">On-Chain Whale <span class="text-accent">Monitor</span></h1>
         <p class="hero-subtitle">
             Real-time monitoring of large-scale token movements across Ethereum, BNB Chain, Polygon &amp; Avalanche.
             Every transfer above <span class="text-gold">${{ threshold|default:"1,000,000" }}</span> triggers a live alert &amp; AI-powered analysis.
@@ -68,7 +68,7 @@
                 <div class="feed-title-group">
                     <h2 class="feed-title">
                         <i class="fa-solid fa-satellite-dish text-accent"></i>
-                        Live Intelligence Feed
+                        Live Feed
                     </h2>
                     <p class="feed-description">Click any transaction to generate an AI whale report</p>
                 </div>
@@ -111,7 +111,7 @@
             <div class="report-panel-header">
                 <span class="report-panel-title">
                     <i class="fa-solid fa-robot"></i>
-                    AI Whale Report
+                    AI Report
                 </span>
                 <span style="font-size:0.6875rem;color:var(--text-secondary)">Claude AI</span>
             </div>

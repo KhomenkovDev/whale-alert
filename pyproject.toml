@@ -1,0 +1,78 @@
+[build-system]
+requires = ["setuptools>=61.0,<78"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "whale-alert"
+version = "0.2.0"
+description = "Real-time multi-chain whale transaction monitor"
+requires-python = ">=3.11,<3.14"
+license = { text = "MIT" }
+dependencies = [
+    "Django==4.2.16",
+    "channels==4.1.0",
+    "channels-redis==4.2.0",
+    "celery==5.4.0",
+    "redis==5.0.8",
+    "psycopg2-binary==2.9.9",
+    "web3==6.20.1",
+    "daphne==4.1.2",
+    "django-environ==0.11.2",
+    "whitenoise==6.7.0",
+    "requests==2.32.3",
+    "python-dotenv==1.0.1",
+    "anthropic>=0.25.0",
+    "django-ratelimit==4.1.0",
+    "eth-typing<5",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8,<9",
+    "pytest-django>=4,<6",
+    "ruff>=0.11,<1",
+    "mypy>=1.15,<2",
+    "pytest-mock>=3,<5",
+    "httpx>=0.28,<1",
+    "pytest-asyncio>=0.24,<1",
+]
+
+[tool.setuptools.packages.find]
+include = ["whale_alert", "whale_alert.*", "core", "core.*", "monitor", "monitor.*"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+exclude = [".venv", "migrations"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B", "SIM"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.11"
+strict_optional = true
+ignore_missing_imports = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = "monitor.*"
+strict = true
+disable_error_code = ["untyped-decorator", "no-any-return", "misc"]
+
+[[tool.mypy.overrides]]
+module = "core.*"
+strict = false
+ignore_missing_imports = true
+disable_error_code = ["misc", "no-untyped-def", "union-attr"]
+
+[[tool.mypy.overrides]]
+module = "core.migrations.*"
+ignore_errors = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+DJANGO_SETTINGS_MODULE = "whale_alert.settings"
+asyncio_mode = "auto"

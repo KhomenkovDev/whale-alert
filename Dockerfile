@@ -1,29 +1,21 @@
-FROM python:3.11-slim
+FROM python:3.12-slim
 
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-ENV PORT=8080
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PORT=8080
 
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    libpq-dev \
-    gcc \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq-dev gcc \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
 COPY . .
+RUN pip install --no-cache-dir build setuptools && pip install --no-cache-dir .
 
-# Collect static files
-RUN python manage.py collectstatic --noinput || true
-
-# Run migrations to initialize the SQLite database
-RUN python manage.py migrate
+RUN python manage.py collectstatic --noinput
+RUN python manage.py migrate --noinput
 
 EXPOSE 8080
 
-# Use daphne for Channels support
 CMD daphne -b 0.0.0.0 -p $PORT whale_alert.asgi:application

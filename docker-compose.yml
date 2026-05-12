@@ -1,0 +1,55 @@
+version: "3.9"
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  web:
+    build: .
+    ports:
+      - "8080:8080"
+    env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379
+      CHANNEL_LAYER_TYPE: redis
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - static_data:/app/staticfiles
+      - ./db.sqlite3:/app/db.sqlite3
+
+  celery_worker:
+    build: .
+    command: celery -A whale_alert worker -l info
+    env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379
+      CHANNEL_LAYER_TYPE: redis
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  celery_beat:
+    build: .
+    command: celery -A whale_alert beat -l info
+    env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379
+      CHANNEL_LAYER_TYPE: redis
+    depends_on:
+      redis:
+        condition: service_healthy
+
+volumes:
+  redis_data:
+  static_data:
